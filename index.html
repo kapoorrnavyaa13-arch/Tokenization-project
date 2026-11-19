@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NLP Pipeline Visualizer: Vocabulary, Tokenization & Interactive 3D Embeddings</title>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Plotly.js for interactive 3D scatter plots -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        blush: {
+                            50: '#fdf4f7',
+                            100: '#fce7f0',
+                            200: '#fad1e3',
+                            300: '#f7abc9',
+                            400: '#f472b6',
+                            500: '#ec4899',
+                            600: '#db2777',
+                            700: '#be185d',
+                            800: '#9d174d',
+                            900: '#2b0f1c',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Soft Blush & Rose Scrollbar */
+        ::-webkit-scrollbar {
+            width: 7px;
+            height: 7px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #fdf4f7;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #f3c4d8;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #db2777;
+        }
+
+        /* Editorial Petal-White Card */
+        .petal-card {
+            background: #ffffff;
+            border: 1px solid #f7d6e4;
+            box-shadow: 0 10px 28px -10px rgba(190, 24, 93, 0.08), 0 2px 6px -2px rgba(43, 15, 28, 0.04);
+        }
+
+        /* Synchronized Hover/Selection Highlight */
+        .token-active {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px -4px rgba(219, 39, 119, 0.28);
+            border-color: #db2777 !important;
+            background-color: #fce7f0 !important;
+            z-index: 10;
+        }
+        .vocab-row-active {
+            background-color: #fce7f0 !important;
+        }
+    </style>
+</head>
+<body class="bg-[#fdf4f7] text-[#2b0f1c] font-sans antialiased min-h-screen flex flex-col selection:bg-blush-200 selection:text-blush-900">
+
+    <!-- Top Header -->
+    <header class="border-b border-[#f7d6e4] bg-white/90 backdrop-blur-md sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex items-center gap-3.5">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blush-400 to-blush-600 flex items-center justify-center shadow-md shadow-blush-500/20 shrink-0">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2.5">
+                        <h1 class="text-lg sm:text-xl font-bold text-[#2b0f1c] tracking-tight">NLP Text-Processing Pipeline</h1>
+                        <span class="hidden md:inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blush-100 text-blush-700 border border-blush-200">
+                            Interactive 3D Vector Lab
+                        </span>
+                    </div>
+                    <p class="text-xs sm:text-sm text-[#78485e]">Vocabulary Extraction &rarr; Sequential Tokenization &rarr; 3D Semantic Vector Space</p>
+                </div>
+            </div>
+
+            <!-- 3D Camera Controls -->
+            <div class="flex items-center gap-2.5 bg-[#fdf4f7] px-3 py-1.5 rounded-xl border border-[#f7d6e4] self-start sm:self-auto">
+                <div class="flex items-center gap-2 pr-1">
+                    <span id="orbit-dot" class="w-2 h-2 rounded-full bg-blush-600 animate-pulse"></span>
+                    <span id="orbit-status" class="text-xs font-medium text-[#6e3f54]">3D Orbit Active</span>
+                </div>
+                <button id="btn-orbit-toggle" type="button" onclick="toggleOrbit()" class="px-3 py-1 text-xs font-semibold rounded-lg bg-white hover:bg-blush-100 text-blush-700 border border-blush-200 shadow-xs transition-all">
+                    Pause Orbit
+                </button>
+                <button type="button" onclick="resetCameraView()" title="Reset 3D Zoom & Camera Angle" class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white hover:bg-blush-100 text-[#6e3f54] border border-blush-200 shadow-xs transition-all">
+                    Reset View
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-7">
+
+        <!-- Input & Polysemy Presets Card -->
+        <section class="petal-card rounded-2xl p-5 sm:p-6">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-base font-bold text-[#2b0f1c] flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-blush-600"></span>
+                        Corpus Input &amp; Polysemy Presets
+                    </h2>
+                    <p class="text-xs text-[#78485e] mt-0.5">Type any sentence or load a polysemous preset to compare how identical words behave in 3D Static vs. Contextual space.</p>
+                </div>
+
+                <!-- Curated Presets -->
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs text-[#8c5a70] font-medium">Presets:</span>
+                    <button onclick="loadPreset('bank')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#fdf4f7] hover:bg-blush-100 text-blush-700 border border-blush-200 hover:border-blush-400 transition-all">
+                        "Bank: River vs Money"
+                    </button>
+                    <button onclick="loadPreset('apple')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#fdf4f7] hover:bg-blush-100 text-blush-700 border border-blush-200 hover:border-blush-400 transition-all">
+                        "Apple: Fruit vs Tech"
+                    </button>
+                    <button onclick="loadPreset('bat')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#fdf4f7] hover:bg-blush-100 text-blush-700 border border-blush-200 hover:border-blush-400 transition-all">
+                        "Bat: Animal vs Cricket"
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                <textarea id="input-text" rows="2" class="w-full rounded-xl bg-[#fdf8fa] border border-[#f2c6d9] focus:border-blush-600 focus:bg-white focus:ring-3 focus:ring-blush-400/20 text-[#2b0f1c] placeholder-[#b08498] p-3.5 text-sm sm:text-base font-mono transition-all resize-y" placeholder="Enter a sentence with repeated words in different contexts...">The river bank overflowed right beside the downtown savings bank.</textarea>
+                <button onclick="processPipeline()" class="px-6 py-3.5 rounded-xl bg-gradient-to-r from-blush-600 to-blush-500 hover:from-blush-700 hover:to-blush-600 text-white font-semibold text-sm shadow-md shadow-blush-600/20 active:scale-[0.99] transition-all shrink-0 flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                    Run Pipeline
+                </button>
+            </div>
+
+            <!-- Inline Validation Banner -->
+            <div id="status-banner" class="hidden mt-3 px-3.5 py-2 rounded-lg bg-rose-50 border border-rose-300 text-rose-800 text-xs font-medium"></div>
+        </section>
+
+        <!-- Step 1 & Step 2 Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- STEP 1: Vocabulary Extraction -->
+            <section class="lg:col-span-5 petal-card rounded-2xl p-5 sm:p-6 flex flex-col">
+                <div class="flex items-start justify-between gap-2 mb-4">
+                    <div>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-blush-100 border border-blush-200 text-blush-700 text-[11px] font-semibold uppercase tracking-wide mb-1.5">
+                            Step 01
+                        </span>
+                        <h2 class="text-lg font-bold text-[#2b0f1c]">Vocabulary Extraction</h2>
+                        <p class="text-xs text-[#78485e] mt-0.5">Unique normalized terms mapped to Vocabulary IDs.</p>
+                    </div>
+                    <div class="flex flex-col items-end gap-1.5">
+                        <span id="vocab-count-badge" class="px-2.5 py-1 rounded-lg bg-blush-50 text-blush-800 font-mono text-xs font-semibold border border-blush-200">
+                            0 unique
+                        </span>
+                        <select id="vocab-sort" onchange="renderVocabulary()" class="bg-[#fdf8fa] border border-[#f2c6d9] text-[#2b0f1c] text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-blush-600">
+                            <option value="id">Order of Appearance</option>
+                            <option value="freq">Frequency (High &rarr; Low)</option>
+                            <option value="alpha">Alphabetical (A &rarr; Z)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Vocabulary Table -->
+                <div class="flex-1 overflow-y-auto max-h-80 rounded-xl border border-[#f5d2e1] bg-[#fdf9fb]">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-[#fceef4] sticky top-0 z-10 border-b border-[#f5d2e1] text-[11px] uppercase tracking-wider text-[#78485e]">
+                            <tr>
+                                <th class="py-2.5 px-3 font-semibold">Vocab ID</th>
+                                <th class="py-2.5 px-3 font-semibold">Unique Term</th>
+                                <th class="py-2.5 px-3 font-semibold text-right">Freq</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vocab-table-body" class="divide-y divide-[#f8e1eb] text-xs font-mono">
+                            <!-- Rendered via JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-[11px] text-[#8c5a70] mt-3">
+                    Hover or click any vocabulary row to highlight matching tokens &amp; 3D points.
+                </p>
+            </section>
+
+            <!-- STEP 2: Sequential Tokenization -->
+            <section class="lg:col-span-7 petal-card rounded-2xl p-5 sm:p-6 flex flex-col">
+                <div class="flex items-start justify-between gap-2 mb-4">
+                    <div>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-blush-100 border border-blush-200 text-blush-700 text-[11px] font-semibold uppercase tracking-wide mb-1.5">
+                            Step 02
+                        </span>
+                        <h2 class="text-lg font-bold text-[#2b0f1c]">Sequential Tokenization</h2>
+                        <p class="text-xs text-[#78485e] mt-0.5">Ordered token stream with sequence index and Vocabulary ID.</p>
+                    </div>
+                    <span id="token-count-badge" class="px-2.5 py-1 rounded-lg bg-blush-50 text-blush-800 font-mono text-xs font-semibold border border-blush-200 shrink-0">
+                        0 tokens
+                    </span>
+                </div>
+
+                <!-- Token Cards Container -->
+                <div id="token-stream" class="flex-1 p-4 rounded-xl border border-[#f5d2e1] bg-[#fdf9fb] flex flex-wrap content-start gap-2.5 overflow-y-auto max-h-80">
+                    <!-- Rendered via JS -->
+                </div>
+
+                <!-- Footer Legend -->
+                <div class="mt-3 pt-3 border-t border-[#f8e1eb] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#78485e]">
+                    <div class="flex items-center gap-4">
+                        <span class="flex items-center gap-1.5">
+                            <span class="px-1.5 py-0.5 rounded bg-blush-50 border border-blush-200 font-mono text-[10px] text-[#6e3f54]">#0</span>
+                            Position Index
+                        </span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="px-1.5 py-0.5 rounded bg-blush-100 border border-blush-300 font-mono text-[10px] text-blush-800">ID: 2</span>
+                            Vocabulary ID
+                        </span>
+                    </div>
+                    <span class="text-blush-700 font-semibold" id="polysemy-indicator">Repeated words highlighted</span>
+                </div>
+            </section>
+        </div>
+
+        <!-- STEP 3: Interactive 3D Embedding Visualization with Mode Switcher -->
+        <section class="petal-card rounded-2xl p-5 sm:p-6">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+                <div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-blush-100 border border-blush-200 text-blush-700 text-[11px] font-semibold uppercase tracking-wide mb-1.5">
+                        Step 03
+                    </span>
+                    <h2 class="text-lg sm:text-xl font-bold text-[#2b0f1c]">Interactive 3D Embedding Space</h2>
+                    <p class="text-xs sm:text-sm text-[#78485e] mt-0.5">
+                        Rotate (drag), zoom (scroll), toggle legend categories, and switch views to compare Static vs. Contextual 3D vectors.
+                    </p>
+                </div>
+
+                <!-- Interactive Embedding Mode Switcher -->
+                <div class="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#fceef4] border border-[#f5d2e1] self-start lg:self-auto">
+                    <button id="mode-compare" onclick="setViewMode('compare')" class="mode-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-blush-700 shadow-xs border border-blush-200">
+                        Side-by-Side Compare
+                    </button>
+                    <button id="mode-static" onclick="setViewMode('static')" class="mode-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-[#78485e] hover:text-[#2b0f1c] border border-transparent">
+                        Static (Word2Vec)
+                    </button>
+                    <button id="mode-contextual" onclick="setViewMode('contextual')" class="mode-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-[#78485e] hover:text-[#2b0f1c] border border-transparent">
+                        Contextual (BERT)
+                    </button>
+                    <button id="mode-overlay" onclick="setViewMode('overlay')" class="mode-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-[#78485e] hover:text-[#2b0f1c] border border-transparent">
+                        3D Shift Overlay
+                    </button>
+                </div>
+            </div>
+
+            <!-- Interactive Semantic Cluster Legend Bar -->
+            <div class="mb-5 p-3 rounded-xl bg-[#fdf8fa] border border-[#f5d2e1] flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex flex-wrap items-center gap-3">
+                    <span class="font-semibold text-[#5c2c42]">Semantic Clusters:</span>
+                    <span class="inline-flex items-center gap-1.5 text-[#5c2c42]">
+                        <span class="w-3 h-3 rounded-full bg-[#db2777] ring-2 ring-[#fbcfe8]"></span>
+                        Polysemous / Repeated
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 text-[#5c2c42]">
+                        <span class="w-3 h-3 rounded-full bg-[#0284c7]"></span>
+                        Nature &amp; Water
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 text-[#5c2c42]">
+                        <span class="w-3 h-3 rounded-full bg-[#059669]"></span>
+                        Finance &amp; Banking
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 text-[#5c2c42]">
+                        <span class="w-3 h-3 rounded-full bg-[#7c3aed]"></span>
+                        Tech &amp; Devices
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 text-[#5c2c42]">
+                        <span class="w-3 h-3 rounded-full bg-[#ea580c]"></span>
+                        Food, Sport &amp; Wildlife
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 text-[#5c2c42]">
+                        <span class="w-3 h-3 rounded-full bg-[#64748b]"></span>
+                        General Vocabulary
+                    </span>
+                </div>
+                <span class="text-[11px] text-[#8c5a70]">Tip: Click legend items inside the 3D chart to isolate clusters</span>
+            </div>
+
+            <!-- Dynamic 3D Graph Container -->
+            <div id="plots-grid" class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+                <!-- Plot A: Static 3D Embeddings -->
+                <div id="card-static" class="bg-[#fdf8fa] border border-[#f5d2e1] rounded-xl p-4 flex flex-col">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm sm:text-base font-bold text-[#2b0f1c] flex items-center gap-2">
+                            <span>A. Static 3D Embeddings</span>
+                            <span class="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-blush-100 border border-blush-200 text-blush-700">Word2Vec / GloVe</span>
+                        </h3>
+                        <span class="text-[11px] font-mono text-[#8c5a70]">1 Vector / Vocab ID</span>
+                    </div>
+                    <div id="static-plot" class="w-full h-[430px] sm:h-[470px] rounded-lg overflow-hidden border border-[#f5d2e1] bg-white"></div>
+                    <div class="mt-3 p-3.5 rounded-lg bg-white border border-[#f5d2e1] text-xs text-[#6e3f54] leading-relaxed">
+                        <strong class="text-blush-700">Context-Independent Lookup:</strong> Static embeddings map each unique vocabulary ID to one fixed 3D coordinate <span class="font-mono text-[#2b0f1c]">E(w)</span>. Repeated words collapse onto a <strong class="text-[#2b0f1c]">single overlapping point</strong>.
+                    </div>
+                </div>
+
+                <!-- Plot B: Contextual 3D Embeddings -->
+                <div id="card-contextual" class="bg-[#fdf8fa] border border-[#f5d2e1] rounded-xl p-4 flex flex-col">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm sm:text-base font-bold text-[#2b0f1c] flex items-center gap-2">
+                            <span>B. Contextual 3D Embeddings</span>
+                            <span class="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-purple-100 border border-purple-200 text-purple-800">BERT / Transformer</span>
+                        </h3>
+                        <span class="text-[11px] font-mono text-[#8c5a70]">1 Vector / Token Pos</span>
+                    </div>
+                    <div id="contextual-plot" class="w-full h-[430px] sm:h-[470px] rounded-lg overflow-hidden border border-[#f5d2e1] bg-white"></div>
+                    <div class="mt-3 p-3.5 rounded-lg bg-white border border-[#f5d2e1] text-xs text-[#6e3f54] leading-relaxed">
+                        <strong class="text-purple-800">Context-Shifted Representations:</strong> Self-attention computes a distinct 3D vector <span class="font-mono text-[#2b0f1c]">H(w<sub>i</sub> | context)</span> per token position. Dashed rose lines trace how polysemous words separate toward their surrounding semantic clusters.
+                    </div>
+                </div>
+
+                <!-- Plot C: Combined 3D Shift Overlay (Shown in 'overlay' mode) -->
+                <div id="card-overlay" class="hidden xl:col-span-2 bg-[#fdf8fa] border border-[#f5d2e1] rounded-xl p-4 flex-col">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <h3 class="text-sm sm:text-base font-bold text-[#2b0f1c] flex items-center gap-2">
+                            <span>Unified 3D Static &rarr; Contextual Vector Displacement</span>
+                            <span class="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-blush-100 border border-blush-200 text-blush-700">Word2Vec &rarr; BERT Trajectory</span>
+                        </h3>
+                        <span class="text-xs text-[#78485e]">Diamonds = Static Origin &bull; Circles = Contextual Destination</span>
+                    </div>
+                    <div id="overlay-plot" class="w-full h-[500px] sm:h-[540px] rounded-lg overflow-hidden border border-[#f5d2e1] bg-white"></div>
+                    <div class="mt-3 p-3.5 rounded-lg bg-white border border-[#f5d2e1] text-xs text-[#6e3f54] leading-relaxed">
+                        <strong class="text-blush-700">Direct 3D Comparison:</strong> Diamond markers show each word's static origin <span class="font-mono text-[#2b0f1c]">E(w)</span>, while dashed vectors trace the exact 3D shift to each token's contextualized position <span class="font-mono text-[#2b0f1c]">H(w<sub>i</sub>)</span>.
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-[#f7d6e4] bg-white/80 py-4 mt-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#8c5a70]">
+            <span>NLP Pipeline Visualizer &bull; Blush &amp; Rose Editorial Edition</span>
+            <span>Interactive 3D Vector Space Projection via Plotly.js</span>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * Application State
+         */
+        const state = {
+            rawText: '',
+            tokens: [],
+            vocabList: [],
+            vocabMap: new Map(),
+            activeVocabId: null,
+            viewMode: 'compare', // 'compare' | 'static' | 'contextual' | 'overlay'
+            orbitAngle: 0.72,
+            isOrbiting: true,
+            isUserDragging: false,
+            dragResumeTimer: null,
+            animFrameId: null
+        };
+
+        /**
+         * Semantic Cluster Definitions with High-Contrast Light-Theme Colors
+         */
+        const CLUSTERS = {
+            polysemy: { label: 'Polysemous / Repeated', color: '#db2777' },
+            nature:   { label: 'Nature & Water',        color: '#0284c7' },
+            finance:  { label: 'Finance & Banking',     color: '#059669' },
+            tech:     { label: 'Tech & Devices',        color: '#7c3aed' },
+            sensory:  { label: 'Food, Sport & Wildlife',color: '#ea580c' },
+            general:  { label: 'General Vocabulary',    color: '#64748b' }
+        };
+
+        /**
+         * Curated 3D Semantic Anchors (X = Domain Polarity, Y = Concrete/Abstract, Z = Contextual Activity)
+         */
+        const SEMANTIC_ANCHORS = {
+            // Nature / Water
+            river:      { vec: [-2.4,  2.1,  1.6], cluster: 'nature' },
+            water:      { vec: [-2.6,  2.3,  1.4], cluster: 'nature' },
+            overflowed: { vec: [-2.2,  2.4,  1.7], cluster: 'nature' },
+            flooded:    { vec: [-2.1,  2.5,  1.8], cluster: 'nature' },
+            stream:     { vec: [-2.3,  1.9,  1.5], cluster: 'nature' },
+            lake:       { vec: [-2.5,  2.0,  1.3], cluster: 'nature' },
+            // Finance / Banking
+            savings:    { vec: [ 2.5, -2.1,  1.5], cluster: 'finance' },
+            money:      { vec: [ 2.5, -2.1,  1.4], cluster: 'finance' },
+            deposits:   { vec: [ 2.7, -1.9,  1.6], cluster: 'finance' },
+            downtown:   { vec: [ 1.9, -1.7,  1.1], cluster: 'finance' },
+            loan:       { vec: [ 2.4, -2.3,  1.2], cluster: 'finance' },
+            cash:       { vec: [ 2.6, -2.0,  1.5], cluster: 'finance' },
+            // Technology / Devices
+            iphone:     { vec: [ 2.3,  2.4, -1.6], cluster: 'tech' },
+            phone:      { vec: [ 2.2,  2.3, -1.5], cluster: 'tech' },
+            unveiled:   { vec: [ 1.8,  1.9, -1.2], cluster: 'tech' },
+            released:   { vec: [ 1.7,  1.8, -1.1], cluster: 'tech' },
+            laptop:     { vec: [ 2.4,  2.5, -1.6], cluster: 'tech' },
+            sleek:      { vec: [ 1.9,  2.1, -1.3], cluster: 'tech' },
+            // Food / Fruit
+            eating:     { vec: [-2.1, -2.2, -1.4], cluster: 'sensory' },
+            ate:        { vec: [-2.1, -2.2, -1.4], cluster: 'sensory' },
+            crisp:      { vec: [-1.9, -2.0, -1.2], cluster: 'sensory' },
+            red:        { vec: [-1.7, -1.8, -1.0], cluster: 'sensory' },
+            sweet:      { vec: [-2.3, -2.4, -1.5], cluster: 'sensory' },
+            fruit:      { vec: [-2.4, -2.0, -1.4], cluster: 'sensory' },
+            // Sports / Cricket & Bat
+            cricket:    { vec: [ 2.1, -0.5,  2.4], cluster: 'sensory' },
+            stadium:    { vec: [ 2.0, -0.6,  2.2], cluster: 'sensory' },
+            wooden:     { vec: [ 1.6, -0.3,  1.9], cluster: 'sensory' },
+            swung:      { vec: [ 1.8, -0.4,  2.2], cluster: 'sensory' },
+            ball:       { vec: [ 2.2, -0.5,  2.3], cluster: 'sensory' },
+            // Animals / Nocturnal
+            flew:       { vec: [-1.7,  0.5, -2.3], cluster: 'sensory' },
+            cave:       { vec: [-2.1,  0.8, -2.5], cluster: 'sensory' },
+            nocturnal:  { vec: [-1.9,  0.6, -2.4], cluster: 'sensory' },
+            night:      { vec: [-1.9,  0.5, -2.2], cluster: 'sensory' },
+            // Polysemous neutral base vectors near origin
+            bank:       { vec: [ 0.05, -0.05,  0.10], cluster: 'polysemy' },
+            apple:      { vec: [-0.05,  0.05, -0.10], cluster: 'polysemy' },
+            bat:        { vec: [ 0.05,  0.05,  0.00], cluster: 'polysemy' }
+        };
+
+        const PRESETS = {
+            bank: "The river bank overflowed right beside the downtown savings bank.",
+            apple: "Apple unveiled a sleek iPhone while I was eating a crisp red apple.",
+            bat: "He swung the wooden cricket bat inside the stadium as a nocturnal bat flew from the cave."
+        };
+
+        /**
+         * Deterministic hash mapping words to consistent 3D coordinates & semantic cluster
+         */
+        function wordToSemanticData(word) {
+            const clean = word.toLowerCase();
+            if (SEMANTIC_ANCHORS[clean]) {
+                return {
+                    vec: [...SEMANTIC_ANCHORS[clean].vec],
+                    clusterKey: SEMANTIC_ANCHORS[clean].cluster
+                };
+            }
+            let h1 = 2166136261;
+            let h2 = 16777619;
+            let h3 = 374761393;
+            for (let i = 0; i < clean.length; i++) {
+                const c = clean.charCodeAt(i);
+                h1 = Math.imul(h1 ^ c, 16777619);
+                h2 = Math.imul(h2 ^ (c * 31), 2246822519);
+                h3 = Math.imul(h3 ^ (c * 17), 3266489917);
+            }
+            const toCoord = (h) => (((h >>> 0) % 1000) / 500 - 1) * 1.65;
+            if (/^[^\w\s]+$/.test(clean)) {
+                return {
+                    vec: [toCoord(h1) * 0.2, toCoord(h2) * 0.2, toCoord(h3) * 0.2],
+                    clusterKey: 'general'
+                };
+            }
+            return {
+                vec: [toCoord(h1), toCoord(h2), toCoord(h3)],
+                clusterKey: 'general'
+            };
+        }
+
+        /**
+         * Load preset sentence and execute NLP pipeline
+         */
+        function loadPreset(key) {
+            const textarea = document.getElementById('input-text');
+            if (PRESETS[key]) {
+                textarea.value = PRESETS[key];
+                processPipeline();
+            }
+        }
+
+        /**
+         * Switch between Embedding Visualization Modes
+         */
+        function setViewMode(mode) {
+            state.viewMode = mode;
+
+            // Update switcher button styles
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.className = 'mode-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-[#78485e] hover:text-[#2b0f1c] border border-transparent';
+            });
+            const activeBtn = document.getElementById(`mode-${mode}`);
+            if (activeBtn) {
+                activeBtn.className = 'mode-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-blush-700 shadow-xs border border-blush-200';
+            }
+
+            const grid = document.getElementById('plots-grid');
+            const cardStatic = document.getElementById('card-static');
+            const cardContextual = document.getElementById('card-contextual');
+            const cardOverlay = document.getElementById('card-overlay');
+
+            // Reset visibility
+            cardStatic.classList.add('hidden');
+            cardContextual.classList.add('hidden');
+            cardOverlay.classList.add('hidden');
+            cardOverlay.classList.remove('flex');
+            cardStatic.classList.remove('xl:col-span-2');
+            cardContextual.classList.remove('xl:col-span-2');
+
+            if (mode === 'compare') {
+                grid.className = 'grid grid-cols-1 xl:grid-cols-2 gap-6';
+                cardStatic.classList.remove('hidden');
+                cardContextual.classList.remove('hidden');
+            } else if (mode === 'static') {
+                grid.className = 'grid grid-cols-1 gap-6';
+                cardStatic.classList.remove('hidden');
+                cardStatic.classList.add('xl:col-span-2');
+            } else if (mode === 'contextual') {
+                grid.className = 'grid grid-cols-1 gap-6';
+                cardContextual.classList.remove('hidden');
+                cardContextual.classList.add('xl:col-span-2');
+            } else if (mode === 'overlay') {
+                grid.className = 'grid grid-cols-1 gap-6';
+                cardOverlay.classList.remove('hidden');
+                cardOverlay.classList.add('flex');
+            }
+
+            renderEmbeddings();
+        }
+
+        /**
+         * Toggle continuous 3D camera orbit
+         */
+        function toggleOrbit() {
+            state.isOrbiting = !state.isOrbiting;
+            updateOrbitUI();
+        }
+
+        function updateOrbitUI() {
+            const btn = document.getElementById('btn-orbit-toggle');
+            const dot = document.getElementById('orbit-dot');
+            const status = document.getElementById('orbit-status');
+
+            if (state.isOrbiting) {
+                btn.textContent = 'Pause Orbit';
+                dot.className = 'w-2 h-2 rounded-full bg-blush-600 animate-pulse';
+                status.textContent = state.isUserDragging ? 'Inspecting (Auto-Resumes)' : '3D Orbit Active';
+            } else {
+                btn.textContent = 'Resume Orbit';
+                dot.className = 'w-2 h-2 rounded-full bg-[#b08498]';
+                status.textContent = '3D Orbit Paused';
+            }
+        }
+
+        /**
+         * Reset 3D Zoom and Camera Orientation
+         */
+        function resetCameraView() {
+            state.orbitAngle = 0.72;
+            const eye = {
+                x: 1.78 * Math.cos(state.orbitAngle),
+                y: 1.78 * Math.sin(state.orbitAngle),
+                z: 0.75
+            };
+            ['static-plot', 'contextual-plot', 'overlay-plot'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el && el.data) {
+                    Plotly.relayout(el, {
+                        'scene.camera': {
+                            eye,
+                            center: { x: 0, y: 0, z: 0 },
+                            up: { x: 0, y: 0, z: 1 }
+                        }
+                    });
+                }
+            });
+        }
+
+        /**
+         * Smooth continuous 3D camera orbit loop using requestAnimationFrame
+         */
+        function startOrbitLoop() {
+            if (state.animFrameId) cancelAnimationFrame(state.animFrameId);
+
+            function animate() {
+                if (state.isOrbiting && !state.isUserDragging) {
+                    state.orbitAngle += 0.005;
+                    const radius = 1.78;
+                    const eye = {
+                        x: radius * Math.cos(state.orbitAngle),
+                        y: radius * Math.sin(state.orbitAngle),
+                        z: 0.75 + 0.14 * Math.sin(state.orbitAngle * 0.65)
+                    };
+
+                    ['static-plot', 'contextual-plot', 'overlay-plot'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el && el.data && el.offsetParent !== null) {
+                            Plotly.relayout(el, { 'scene.camera.eye': eye });
+                        }
+                    });
+                }
+                state.animFrameId = requestAnimationFrame(animate);
+            }
+
+            state.animFrameId = requestAnimationFrame(animate);
+        }
+
+        /**
+         * Attach drag-pause listeners so manual user rotation & zoom feel effortless
+         */
+        function attachDragHandlers(plotId) {
+            const el = document.getElementById(plotId);
+            if (!el || el.dataset.dragBound) return;
+            el.dataset.dragBound = 'true';
+
+            const pauseForManualDrag = () => {
+                state.isUserDragging = true;
+                updateOrbitUI();
+                if (state.dragResumeTimer) clearTimeout(state.dragResumeTimer);
+            };
+
+            const scheduleResumeAfterDrag = () => {
+                if (state.dragResumeTimer) clearTimeout(state.dragResumeTimer);
+                state.dragResumeTimer = setTimeout(() => {
+                    state.isUserDragging = false;
+                    updateOrbitUI();
+                }, 1600);
+            };
+
+            el.addEventListener('pointerdown', pauseForManualDrag);
+            window.addEventListener('pointerup', () => {
+                if (state.isUserDragging) scheduleResumeAfterDrag();
+            });
+            el.addEventListener('wheel', () => {
+                pauseForManualDrag();
+                scheduleResumeAfterDrag();
+            }, { passive: true });
+        }
+
+        /**
+         * Inline Validation Banner
+         */
+        function showBanner(msg) {
+            const banner = document.getElementById('status-banner');
+            if (!msg) {
+                banner.classList.add('hidden');
+                banner.textContent = '';
+                return;
+            }
+            banner.textContent = msg;
+            banner.classList.remove('hidden');
+        }
+
+        /**
+         * Core NLP Pipeline: Tokenize -> Extract Vocabulary -> Render 3D Embeddings
+         */
+        function processPipeline() {
+            const inputEl = document.getElementById('input-text');
+            const text = inputEl.value.trim();
+
+            if (!text) {
+                showBanner('Please enter a sentence or choose one of the polysemy presets above.');
+                return;
+            }
+            showBanner('');
+            state.rawText = text;
+            state.activeVocabId = null;
+
+            const rawMatches = text.match(/[\w]+(?:['’-][\w]+)*|[^\w\s]/g) || [];
+
+            state.vocabMap = new Map();
+            state.vocabList = [];
+            state.tokens = [];
+
+            let nextId = 0;
+
+            rawMatches.forEach((rawToken, idx) => {
+                const norm = rawToken.toLowerCase();
+                const isPunct = /^[^\w\s]+$/.test(rawToken);
+
+                let vocabEntry;
+                if (!state.vocabMap.has(norm)) {
+                    const sem = wordToSemanticData(norm);
+                    vocabEntry = {
+                        id: nextId,
+                        term: norm,
+                        count: 1,
+                        isPunct,
+                        clusterKey: sem.clusterKey,
+                        baseVec: sem.vec
+                    };
+                    state.vocabMap.set(norm, vocabEntry);
+                    state.vocabList.push(vocabEntry);
+                    nextId++;
+                } else {
+                    vocabEntry = state.vocabMap.get(norm);
+                    vocabEntry.count += 1;
+                }
+
+                state.tokens.push({
+                    index: idx,
+                    raw: rawToken,
+                    norm,
+                    vocabId: vocabEntry.id,
+                    isPunct
+                });
+            });
+
+            // Promote any repeated content word to the 'polysemy' highlight cluster
+            state.vocabList.forEach(v => {
+                if (v.count > 1 && !v.isPunct) {
+                    v.clusterKey = 'polysemy';
+                }
+            });
+
+            renderVocabulary();
+            renderTokens();
+            renderEmbeddings();
+        }
+
+        /**
+         * Render Step 1: Vocabulary Table
+         */
+        function renderVocabulary() {
+            const tbody = document.getElementById('vocab-table-body');
+            const badge = document.getElementById('vocab-count-badge');
+            const sortMode = document.getElementById('vocab-sort').value;
+
+            badge.textContent = `${state.vocabList.length} unique`;
+
+            const sorted = [...state.vocabList];
+            if (sortMode === 'freq') {
+                sorted.sort((a, b) => b.count - a.count || a.id - b.id);
+            } else if (sortMode === 'alpha') {
+                sorted.sort((a, b) => a.term.localeCompare(b.term));
+            } else {
+                sorted.sort((a, b) => a.id - b.id);
+            }
+
+            tbody.innerHTML = sorted.map(item => {
+                const isRepeated = item.count > 1 && !item.isPunct;
+                const clusterInfo = CLUSTERS[item.clusterKey] || CLUSTERS.general;
+                return `
+                    <tr data-vocab-id="${item.id}"
+                        onmouseenter="highlightVocab(${item.id}, true)"
+                        onmouseleave="highlightVocab(${item.id}, false)"
+                        onclick="highlightVocab(${item.id}, true)"
+                        class="transition-colors hover:bg-blush-100/70 cursor-pointer">
+                        <td class="py-2.5 px-3">
+                            <span class="inline-flex items-center justify-center px-2 py-0.5 rounded bg-blush-50 border border-blush-200 text-blush-800 text-[11px] font-semibold">
+                                ${item.id}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-3 font-medium flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${clusterInfo.color};"></span>
+                            <span class="${isRepeated ? 'text-blush-700 font-bold' : 'text-[#2b0f1c]'}">"${escapeHtml(item.term)}"</span>
+                            ${isRepeated ? '<span class="text-[10px] px-1.5 py-0.2 rounded-full bg-blush-100 text-blush-700 border border-blush-300 font-sans font-semibold">polysemous</span>' : ''}
+                        </td>
+                        <td class="py-2.5 px-3 text-right text-[#6e3f54] font-semibold">
+                            ${item.count}&times;
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        /**
+         * Render Step 2: Sequential Tokenization Cards
+         */
+        function renderTokens() {
+            const container = document.getElementById('token-stream');
+            const badge = document.getElementById('token-count-badge');
+            const polyIndicator = document.getElementById('polysemy-indicator');
+
+            badge.textContent = `${state.tokens.length} tokens`;
+
+            const repeatedWords = state.vocabList
+                .filter(v => v.count > 1 && !v.isPunct)
+                .map(v => `"${v.term}"`);
+
+            polyIndicator.textContent = repeatedWords.length > 0
+                ? `Repeated terms: ${repeatedWords.join(', ')}`
+                : 'No repeated content words';
+
+            container.innerHTML = state.tokens.map(tok => {
+                const vocab = state.vocabMap.get(tok.norm);
+                const isRepeated = vocab.count > 1 && !tok.isPunct;
+                const cardStyle = isRepeated
+                    ? 'border-blush-400 bg-blush-50/90 shadow-xs'
+                    : 'border-[#f2d0df] bg-white';
+
+                return `
+                    <div data-vocab-id="${tok.vocabId}"
+                         onmouseenter="highlightVocab(${tok.vocabId}, true)"
+                         onmouseleave="highlightVocab(${tok.vocabId}, false)"
+                         onclick="highlightVocab(${tok.vocabId}, true)"
+                         class="token-card group relative flex flex-col justify-between px-3 py-2 rounded-xl border ${cardStyle} transition-all duration-150 cursor-pointer select-none">
+                        <div class="flex items-center justify-between gap-3 text-[10px] font-mono text-[#8c5a70] mb-1">
+                            <span>#${tok.index}</span>
+                            <span class="px-1.5 py-0.2 rounded bg-blush-50 text-blush-700 border border-blush-200">ID:${tok.vocabId}</span>
+                        </div>
+                        <div class="font-mono text-sm font-semibold ${isRepeated ? 'text-blush-700' : 'text-[#2b0f1c]'} tracking-tight">
+                            ${escapeHtml(tok.raw)}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        /**
+         * Synchronized Cross-Highlighting across Vocabulary, Tokens, and 3D Scatter Plots
+         */
+        function highlightVocab(vocabId, active) {
+            const matches = document.querySelectorAll(`[data-vocab-id="${vocabId}"]`);
+            matches.forEach(el => {
+                if (active) {
+                    if (el.tagName === 'TR') {
+                        el.classList.add('vocab-row-active');
+                    } else {
+                        el.classList.add('token-active');
+                    }
+                } else {
+                    el.classList.remove('vocab-row-active', 'token-active');
+                }
+            });
+
+            if (state.activeVocabId !== (active ? vocabId : null)) {
+                state.activeVocabId = active ? vocabId : null;
+                renderEmbeddings();
+            }
+        }
+
+        /**
+         * Simulate Transformer Self-Attention Contextual 3D Embeddings
+         */
+        function computeContextualVectors() {
+            const windowRadius = 3;
+            const sigma = 1.6;
+
+            return state.tokens.map((tok, i) => {
+                const vocab = state.vocabMap.get(tok.norm);
+                const base = vocab.baseVec;
+
+                if (tok.isPunct) {
+                    return {
+                        token: tok,
+                        vocab,
+                        vec: [base[0] + (i * 0.03), base[1] - (i * 0.02), base[2] + (i * 0.02)]
+                    };
+                }
+
+                let weightedSum = [0, 0, 0];
+                let totalWeight = 0;
+
+                for (let j = Math.max(0, i - windowRadius); j <= Math.min(state.tokens.length - 1, i + windowRadius); j++) {
+                    if (i === j) continue;
+                    const neighborTok = state.tokens[j];
+                    if (neighborTok.isPunct) continue;
+
+                    const neighborVocab = state.vocabMap.get(neighborTok.norm);
+                    const dist = Math.abs(i - j);
+                    const isAnchor = Boolean(SEMANTIC_ANCHORS[neighborTok.norm]);
+                    const weight = Math.exp(-(dist * dist) / (2 * sigma * sigma)) * (isAnchor ? 1.55 : 0.65);
+
+                    weightedSum[0] += neighborVocab.baseVec[0] * weight;
+                    weightedSum[1] += neighborVocab.baseVec[1] * weight;
+                    weightedSum[2] += neighborVocab.baseVec[2] * weight;
+                    totalWeight += weight;
+                }
+
+                const contextAlpha = vocab.count > 1 ? 0.74 : 0.36;
+                const selfAlpha = 1 - contextAlpha;
+
+                const ctxVec = totalWeight > 0
+                    ? [
+                        selfAlpha * base[0] + contextAlpha * (weightedSum[0] / totalWeight),
+                        selfAlpha * base[1] + contextAlpha * (weightedSum[1] / totalWeight),
+                        selfAlpha * base[2] + contextAlpha * (weightedSum[2] / totalWeight)
+                    ]
+                    : [...base];
+
+                return {
+                    token: tok,
+                    vocab,
+                    vec: ctxVec
+                };
+            });
+        }
+
+        /**
+         * Build Cluster-Grouped 3D Scatter Traces with Interactive Legends & Rich Tooltips
+         */
+        function buildClusterTraces(items, isContextual) {
+            const clusterOrder = ['polysemy', 'nature', 'finance', 'tech', 'sensory', 'general'];
+            const traces = [];
+
+            clusterOrder.forEach(cKey => {
+                const clusterMeta = CLUSTERS[cKey];
+                const group = items.filter(item => {
+                    const v = isContextual ? item.vocab : item;
+                    return v.clusterKey === cKey;
+                });
+
+                if (group.length === 0) return;
+
+                traces.push({
+                    type: 'scatter3d',
+                    mode: 'markers+text',
+                    name: clusterMeta.label,
+                    legendgroup: cKey,
+                    x: group.map(item => isContextual ? item.vec[0] : item.baseVec[0]),
+                    y: group.map(item => isContextual ? item.vec[1] : item.baseVec[1]),
+                    z: group.map(item => isContextual ? item.vec[2] : item.baseVec[2]),
+                    text: group.map(item => {
+                        if (isContextual) {
+                            return item.vocab.count > 1 ? `${item.token.raw} [#${item.token.index}]` : item.token.raw;
+                        }
+                        return item.count > 1 ? `${item.term} (${item.count}×)` : item.term;
+                    }),
+                    textposition: 'top center',
+                    textfont: {
+                        family: 'JetBrains Mono, monospace',
+                        size: 10.5,
+                        color: cKey === 'polysemy' ? '#be185d' : '#2b0f1c'
+                    },
+                    hovertext: group.map(item => {
+                        if (isContextual) {
+                            const prev = state.tokens[item.token.index - 1]?.raw || 'BOS';
+                            const next = state.tokens[item.token.index + 1]?.raw || 'EOS';
+                            return `<b>Token:</b> "${item.token.raw}" (Pos #${item.token.index}, ID: ${item.vocab.id})<br>` +
+                                   `<b>Cluster:</b> ${clusterMeta.label}<br>` +
+                                   `<b>Local Window:</b> [… ${prev} <u>${item.token.raw}</u> ${next} …]<br>` +
+                                   `<b>X (Semantic Domain):</b> ${item.vec[0].toFixed(2)}<br>` +
+                                   `<b>Y (Abstraction):</b> ${item.vec[1].toFixed(2)}<br>` +
+                                   `<b>Z (Context Shift):</b> ${item.vec[2].toFixed(2)}`;
+                        } else {
+                            return `<b>Term:</b> "${item.term}" (Vocab ID: ${item.id})<br>` +
+                                   `<b>Cluster:</b> ${clusterMeta.label}<br>` +
+                                   `<b>Occurrences:</b> ${item.count}&times;<br>` +
+                                   `<b>X (Semantic Domain):</b> ${item.baseVec[0].toFixed(2)}<br>` +
+                                   `<b>Y (Abstraction):</b> ${item.baseVec[1].toFixed(2)}<br>` +
+                                   `<b>Z (Context Shift):</b> ${item.baseVec[2].toFixed(2)}<br>` +
+                                   `<i>Static lookup vector (invariant across positions)</i>`;
+                        }
+                    }),
+                    hoverinfo: 'text',
+                    marker: {
+                        size: group.map(item => {
+                            const v = isContextual ? item.vocab : item;
+                            const baseSize = v.count > 1 ? 11 : 7.5;
+                            return state.activeVocabId === v.id ? baseSize + 4.5 : baseSize;
+                        }),
+                        color: clusterMeta.color,
+                        line: {
+                            color: '#ffffff',
+                            width: 1.8
+                        },
+                        opacity: group.map(item => {
+                            const v = isContextual ? item.vocab : item;
+                            return (state.activeVocabId === null || state.activeVocabId === v.id) ? 0.96 : 0.22;
+                        })
+                    }
+                });
+            });
+
+            return traces;
+        }
+
+        /**
+         * Render Step 3: Interactive 3D Blush-Light Plotly Scatter Graphs
+         */
+        function renderEmbeddings() {
+            if (!state.tokens.length) return;
+
+            const contextualData = computeContextualVectors();
+            const staticItems = state.vocabList.filter(v => !v.isPunct);
+            const ctxItems = contextualData.filter(d => !d.token.isPunct);
+
+            const radius = 1.78;
+            const currentEye = {
+                x: radius * Math.cos(state.orbitAngle),
+                y: radius * Math.sin(state.orbitAngle),
+                z: 0.75 + 0.14 * Math.sin(state.orbitAngle * 0.65)
+            };
+
+            const axisStyle = {
+                gridcolor: '#f3d1e0',
+                zerolinecolor: '#db2777',
+                zerolinewidth: 2,
+                color: '#5c2c42',
+                backgroundcolor: '#fdf6f9',
+                showbackground: true,
+                tickfont: { size: 9, color: '#8c5a70', family: 'JetBrains Mono, monospace' },
+                titlefont: { size: 10.5, color: '#9d174d', family: 'Inter, sans-serif' }
+            };
+
+            const baseLayout = {
+                paper_bgcolor: '#ffffff',
+                plot_bgcolor: '#ffffff',
+                margin: { l: 0, r: 0, t: 10, b: 10 },
+                showlegend: true,
+                legend: {
+                    orientation: 'h',
+                    yanchor: 'top',
+                    y: 0.99,
+                    xanchor: 'left',
+                    x: 0.01,
+                    bgcolor: 'rgba(255, 255, 255, 0.88)',
+                    bordercolor: '#f5d2e1',
+                    borderwidth: 1,
+                    font: { family: 'Inter, sans-serif', size: 10.5, color: '#2b0f1c' }
+                },
+                hoverlabel: {
+                    bgcolor: '#ffffff',
+                    bordercolor: '#db2777',
+                    font: { family: 'Inter, sans-serif', size: 12, color: '#2b0f1c' }
+                },
+                scene: {
+                    camera: { eye: currentEye },
+                    xaxis: { ...axisStyle, title: 'X: Semantic Domain' },
+                    yaxis: { ...axisStyle, title: 'Y: Abstraction Axis' },
+                    zaxis: { ...axisStyle, title: 'Z: Context Modulation' }
+                }
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                displaylogo: false,
+                modeBarButtonsToRemove: ['toImage', 'resetCameraLastSave3d']
+            };
+
+            // 1. Static 3D Plot
+            if (state.viewMode === 'compare' || state.viewMode === 'static') {
+                const staticTraces = buildClusterTraces(staticItems, false);
+                Plotly.react('static-plot', staticTraces, baseLayout, config);
+                attachDragHandlers('static-plot');
+            }
+
+            // 2. Contextual 3D Plot
+            if (state.viewMode === 'compare' || state.viewMode === 'contextual') {
+                const ctxTraces = buildClusterTraces(ctxItems, true);
+
+                // Add dashed rose connectors between separated polysemous instances
+                const groupedByVocab = new Map();
+                ctxItems.forEach(d => {
+                    if (d.vocab.count > 1) {
+                        if (!groupedByVocab.has(d.vocab.id)) groupedByVocab.set(d.vocab.id, []);
+                        groupedByVocab.get(d.vocab.id).push(d);
+                    }
+                });
+
+                groupedByVocab.forEach((instances, vocabId) => {
+                    if (instances.length > 1) {
+                        ctxTraces.push({
+                            type: 'scatter3d',
+                            mode: 'lines',
+                            name: `"${instances[0].vocab.term}" Context Split`,
+                            x: instances.map(inst => inst.vec[0]),
+                            y: instances.map(inst => inst.vec[1]),
+                            z: instances.map(inst => inst.vec[2]),
+                            line: {
+                                color: '#db2777',
+                                width: 3.5,
+                                dash: 'dash'
+                            },
+                            hoverinfo: 'skip',
+                            showlegend: false
+                        });
+                    }
+                });
+
+                Plotly.react('contextual-plot', ctxTraces, baseLayout, config);
+                attachDragHandlers('contextual-plot');
+            }
+
+            // 3. Unified 3D Shift Overlay Plot (Static Diamond -> Contextual Circle)
+            if (state.viewMode === 'overlay') {
+                const overlayTraces = [];
+
+                // Static Origin Diamonds
+                overlayTraces.push({
+                    type: 'scatter3d',
+                    mode: 'markers+text',
+                    name: 'Static Origin (Word2Vec)',
+                    x: staticItems.map(v => v.baseVec[0]),
+                    y: staticItems.map(v => v.baseVec[1]),
+                    z: staticItems.map(v => v.baseVec[2]),
+                    text: staticItems.map(v => `${v.term} (Static)`),
+                    textposition: 'bottom center',
+                    textfont: { family: 'JetBrains Mono, monospace', size: 10, color: '#8c5a70' },
+                    hovertext: staticItems.map(v =>
+                        `<b>Static Origin:</b> "${v.term}" (ID: ${v.id})<br>` +
+                        `<b>Coords:</b> (${v.baseVec[0].toFixed(2)}, ${v.baseVec[1].toFixed(2)}, ${v.baseVec[2].toFixed(2)})`
+                    ),
+                    hoverinfo: 'text',
+                    marker: {
+                        symbol: 'diamond',
+                        size: 7.5,
+                        color: '#f472b6',
+                        line: { color: '#9d174d', width: 1.5 },
+                        opacity: 0.85
+                    }
+                });
+
+                // Contextual Destination Points
+                overlayTraces.push(...buildClusterTraces(ctxItems, true));
+
+                // Displacement Vectors from Static Origin -> Contextual Position
+                ctxItems.forEach(d => {
+                    const isPoly = d.vocab.count > 1;
+                    overlayTraces.push({
+                        type: 'scatter3d',
+                        mode: 'lines',
+                        x: [d.vocab.baseVec[0], d.vec[0]],
+                        y: [d.vocab.baseVec[1], d.vec[1]],
+                        z: [d.vocab.baseVec[2], d.vec[2]],
+                        line: {
+                            color: isPoly ? '#db2777' : 'rgba(157, 23, 77, 0.28)',
+                            width: isPoly ? 4 : 2,
+                            dash: isPoly ? 'dash' : 'dot'
+                        },
+                        hoverinfo: 'skip',
+                        showlegend: false
+                    });
+                });
+
+                Plotly.react('overlay-plot', overlayTraces, baseLayout, config);
+                attachDragHandlers('overlay-plot');
+            }
+        }
+
+        /**
+         * Safely escape HTML characters
+         */
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            processPipeline();
+            startOrbitLoop();
+        });
+
+        window.addEventListener('resize', () => {
+            ['static-plot', 'contextual-plot', 'overlay-plot'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el && el.data && el.offsetParent !== null) {
+                    Plotly.Plots.resize(el);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
